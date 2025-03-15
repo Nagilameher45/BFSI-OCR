@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Processor</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .container {
+            width: 60%;
+            margin: 20px auto;
+        }
+        .chart-container {
+            width: 100%;
+            margin-top: 20px;
+        }
+        .hidden { display: none; }
+        .container { margin-top: 20px; }
+        .button { padding: 10px; background: blue; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo">BFSI OCR</div>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="document-processor.html">Document Processor</a></li>
+            <li><a href="loan-approval.html">Loan Approval</a></li>
+            <li><a href="contact.html">Contact Us</a></li>
+            <li><a href="reglog.html">Register/Login</a></li>
+        </ul>
+    </nav>
+
+    <div class="home-container">
+        <h2>BFSI Document OCR Processing</h2>
+
+        <!-- Learning Type Selection -->
+        <form>
+            <label for="learningType"><b>Select Learning Type:</b></label>
+            <select id="learningType" name="learningType" onchange="handleLearningTypeChange()">
+                <option value="">-- Select --</option>
+                <option value="supervised">Supervised</option>
+                <option value="unsupervised">Unsupervised</option>
+                <option value="semi-supervised">Semi-Supervised</option>
+            </select>
+            <!-- Document Type Dropdown (Hidden by Default) -->
+        <div id="docTypeDiv" class="hidden">
+            <label for="docType"><b>Select Document Type:</b></label>
+            <select id="docType" name="docType" onchange="handleDocTypeChange()">
+                <option value="">-- Select --</option>
+                <option value="bankstatement">Bank Statement</option>
+                <option value="invoice">Invoice</option>
+                <option value="payslip">Payslip</option>
+                <option value="profit_loss">Profit & Loss Statement</option>
+            </select>
+        </div>
+        </form>
+    
+        <!-- File Upload & Processing Section (Initially Hidden) -->
+        <div class="container hidden" id="fileContainer">
+            <input type="file" id="fileInput" accept="image/*,application/pdf">
+            <button onclick="processOCR()" class="button" id="processBtn" disabled>Process Document</button>
+            <p id="loadingText" style="display: none; color: blue;">Processing...</p>
+            <div id="extractedTextDiv" class="hidden">
+                <h3>Extracted Text:</h3>
+                <p id="extractedText"></p>
+            </div>
+            <div class="output" id="outputText"></div>
+            <div class="chart-container"></div>
+        </div>
+        <div id="fileContainer" class="hidden">
+            <input type="file" id="fileInput" />
+        </div>
+        
+        <div id="extractedTextDiv" class="hidden">
+            <h3>Extracted Text:</h3>
+            <p id="extractedText"></p>
+        </div>
+        <div class="cluster-container">
+            <h2>Clustering Visualization</h2>
+            <canvas id="clusterChart" width="400" height="200"></canvas>
+            <a href="visualization.py"></a>
+        </div>
+
+    </div>
+   
+
+    <script>
+       
+
+        let barChart, lineChart, pieChart;
+
+        function processOCR() {
+            let file = document.getElementById("fileInput").files[0];
+            if (!file) {
+                alert("Please upload a document.");
+                return;
+            }
+
+            // Simulating OCR extraction (Replace this with actual backend API)
+            fetch('/extract_data', { method: 'POST', body: file })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("ocrOutput").value = JSON.stringify(data, null, 2);
+                updateCharts(data);
+            })
+            .catch(error => console.error("Error processing OCR:", error));
+        }
+
+        function updateCharts(ocrData) {
+            const months = ocrData.months;
+            const transactions = ocrData.transactions;
+            const invoiceValues = ocrData.invoiceValues;
+            const transactionTypes = ocrData.transactionTypes;
+            const transactionCounts = ocrData.transactionCounts;
+
+            if (barChart) barChart.destroy();
+            barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Total Transactions',
+                        data: transactions,
+                        backgroundColor: 'blue',
+                        borderColor: 'darkblue',
+                        borderWidth: 1
+                    }]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+
+            if (lineChart) lineChart.destroy();
+            lineChart = new Chart(document.getElementById('lineChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Invoice Value (₹)',
+                        data: invoiceValues,
+                        borderColor: 'green',
+                        borderWidth: 2,
+                        fill: false
+                    }]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+
+            if (pieChart) pieChart.destroy();
+            pieChart = new Chart(document.getElementById('pieChart').getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: transactionTypes,
+                    datasets: [{
+                        data: transactionCounts,
+                        backgroundColor: ['red', 'blue', 'green']
+                    }]
+                },
+                options: { responsive: true }
+            });
+        }
+    </script>
+
+    
+<br><br>
+    
+    <script>
+
+document.addEventListener("DOMContentLoaded", function () {
+    const learningType = document.getElementById("learningType");
+    const docTypeDiv = document.getElementById("docTypeDiv");
+    const docTypeSelect = document.getElementById("docType");
+    const fileContainer = document.getElementById("fileContainer");
+    const extractedTextDiv = document.getElementById("extractedTextDiv");
+    const fileInput = document.getElementById("fileInput");
+    const processBtn = document.getElementById("processBtn");
+    const loadingText = document.getElementById("loadingText");
+    const outputText = document.getElementById("outputText");
+    // Ensure the script runs only after the DOM is fully loaded
+    
+ 
+    document.addEventListener("DOMContentLoaded", function () {
+    document.getElementById("fileInput").addEventListener("change", handleFileUpload);
+});
+
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const fileType = file.type;
+
+    if (fileType === "application/pdf") {
+        extractImagesFromPDF(file); // Extract image from scanned PDF and process with OCR
+    } else if (fileType.startsWith("image/")) {
+        extractTextFromImage(URL.createObjectURL(file)); // Process images directly
+    } else {
+        alert("Unsupported file format. Please upload a PDF or an image.");
+    }
+}
+
+// Extract images from a scanned PDF
+function extractImagesFromPDF(file) {
+    const fileReader = new FileReader();
+    fileReader.onload = function () {
+        const typedArray = new Uint8Array(this.result);
+        pdfjsLib.getDocument(typedArray).promise.then(pdf => {
+            pdf.getPage(1).then(page => {
+                const scale = 2;  // High scale for better resolution
+                const viewport = page.getViewport({ scale });
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                page.render({ canvasContext: ctx, viewport }).promise.then(() => {
+                    const imageData = canvas.toDataURL("image/png"); // Convert canvas to image
+                    extractTextFromImage(imageData); // Run OCR on extracted image
+                });
+            });
+        }).catch(error => {
+            console.error("PDF Processing Error:", error);
+            alert("Error processing scanned PDF.");
+        });
+    };
+    fileReader.readAsArrayBuffer(file);
+}
+
+// OCR on image using Tesseract.js
+function extractTextFromImage(imageData) {
+    Tesseract.recognize(imageData, 'eng', {
+        logger: m => console.log(m) // Show OCR progress
+    }).then(({ data: { text } }) => {
+        console.log("Extracted Text:", text);
+        document.getElementById("result").innerText = text || "No text found.";
+    }).catch(error => {
+        console.error("OCR Error:", error);
+        alert("Error processing image.");
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    console.log("Document loaded successfully!");
+
+    // Select elements and ensure they exist before adding event listeners
+    const learningTypeDropdown = document.getElementById("learningType");
+    const docTypeDropdown = document.getElementById("docType");
+    const processBtn = document.getElementById("processButton");
+
+    if (learningTypeDropdown) {
+        learningTypeDropdown.addEventListener("change", handleLearningTypeChange);
+    } else {
+        console.error("Element #learningType not found.");
+    }
+
+    if (docTypeDropdown) {
+        docTypeDropdown.addEventListener("change", handleDocTypeChange);
+    } else {
+        console.error("Element #docType not found.");
+    }
+
+    if (processBtn) {
+        processBtn.addEventListener("click", processOCR);
+    } else {
+        console.error("Element #processButton not found.");
+    }
+
+    // Load external dependencies
+    loadChartJS();
+    configurePDFWorker();
+    initializeTesseractWorker();
+});
+
+/**
+ * Handles the change event for the Learning Type dropdown.
+ */
+function handleLearningTypeChange(event) {
+    console.log("Learning Type Selected:", event.target.value);
+}
+
+/**
+ * Handles the change event for the Document Type dropdown.
+ */
+function handleDocTypeChange(event) {
+    console.log("Document Type Selected:", event.target.value);
+}
+
+/**
+ * Processes OCR operation.
+ */
+function processOCR() {
+    console.log("Processing OCR...");
+    // Implement OCR logic here
+}
+
+/**
+ * Loads Chart.js dynamically.
+ */
+function loadChartJS() {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js";
+    script.onload = () => console.log("Chart.js loaded successfully.");
+    script.onerror = () => console.error("Failed to load Chart.js.");
+    document.body.appendChild(script);
+}
+
+/**
+ * Configures the PDF.js worker.
+ */
+function configurePDFWorker() {
+    if (typeof pdfjsLib !== "undefined") {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js";
+        console.log("PDF.js worker configured.");
+    } else {
+        console.error("PDF.js library not loaded.");
+    }
+}
+
+/**
+ * Initializes the Tesseract.js worker.
+ */
+function initializeTesseractWorker() {
+    if (typeof Tesseract === "undefined") {
+        console.error("Tesseract.js not loaded.");
+        return;
+    }
+
+    Tesseract.createWorker({
+        workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js/dist/worker.min.js",
+        langPath: "https://tessdata.projectnaptha.com",
+        corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core/tesseract-core.wasm.js",
+        logger: (m) => console.log(m) // Debugging
+    }).then(worker => {
+        console.log("Tesseract worker initialized.");
+        return worker.load();
+    }).catch(err => {
+        console.error("Error loading Tesseract worker:", err);
+    });
+}
+
+    // Learning Type Change Handler
+    learningType.addEventListener("change", function () {
+        const selectedType = learningType.value;
+        docTypeDiv.classList.remove("hidden");
+
+        if (selectedType === "supervised" || selectedType === "semi-supervised") {
+            docTypeSelect.innerHTML = `
+                <option value="select">--Select--</option>
+                <option value="bankstatement">Bank Statement</option>
+                <option value="invoice">Invoice</option>
+                <option value="payslip">Payslip</option>
+                <option value="profitloss">Profit & Loss Statement</option>
+            `;
+        } else if (selectedType === "unsupervised") {
+            docTypeSelect.innerHTML = `<option value="stockmarket">Stock Market</option>`;
+        } else {
+            docTypeDiv.classList.add("hidden");
+            fileContainer.classList.add("hidden");
+            extractedTextDiv.classList.add("hidden");
+        }
+    });
+
+    // Document Type Change Handler
+    docTypeSelect.addEventListener("change", function () {
+        const selectedDoc = docTypeSelect.value;
+        const extractableDocs = ["bankstatement", "invoice", "payslip", "profitloss", "stockmarket"];
+
+        if (extractableDocs.includes(selectedDoc)) {
+            fileContainer.classList.remove("hidden");
+            extractedTextDiv.classList.remove("hidden");
+        } else {
+            fileContainer.classList.add("hidden");
+            extractedTextDiv.classList.add("hidden");
+        }
+    });
+
+    // Enable Process Button on File Selection
+    fileInput.addEventListener("change", function () {
+        processBtn.disabled = !fileInput.files.length;
+    });
+
+    // Process OCR
+    processBtn.addEventListener("click", function () {
+        if (!fileInput.files.length) {
+            alert("Please select a file first!");
+            return;
+        }
+
+        processBtn.disabled = true;
+        loadingText.style.display = "block";
+        outputText.style.display = "none";
+        outputText.innerText = "";
+
+        const file = fileInput.files[0];
+
+        if (file.type === "application/pdf") {
+            extractTextFromPDF(file);
+        } else {
+            extractTextFromImage(file);
+        }
+    });
+
+    // Extract Text from PDF
+    function extractTextFromPDF(file) {
+        const reader = new FileReader();
+        reader.readAsArrayBuffer(file);
+
+        reader.onload = function () {
+            const typedArray = new Uint8Array(reader.result);
+            pdfjsLib.getDocument(typedArray).promise.then(pdf => {
+                let extractedText = "";
+                const pagePromises = [];
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    pagePromises.push(pdf.getPage(i).then(page => {
+                        return page.getTextContent().then(textContent => {
+                            extractedText += textContent.items.map(item => item.str).join(" ") + "\n";
+                        });
+                    }));
+                }
+
+                Promise.all(pagePromises).then(() => {
+                    if (extractedText.trim()) {
+                        displayOutput(extractedText);
+                    } else {
+                        extractTextFromScannedPDF(file);
+                    }
+                }).catch(error => {
+                    displayError("Error extracting text from PDF.");
+                    console.error(error);
+                });
+            });
+        };
+    }
+
+    // Extract Text from Scanned PDFs (OCR)
+    function extractTextFromScannedPDF(file) {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+
+        reader.onload = function () {
+            Tesseract.recognize(reader.result, 'eng+hin+fra+ara+tam+tel+mal', {
+                logger: m => console.log(m)
+            }).then(({ data: { text } }) => {
+                displayOutput(text || "No text detected!");
+            }).catch(error => {
+                displayError("Error processing scanned PDF.");
+                console.error(error);
+            });
+        };
+    }
+
+    // Extract Text from Images (OCR)
+    function extractTextFromImage(file) {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+
+        reader.onload = function () {
+            Tesseract.recognize(reader.result, 'eng+hin+fra+ara+tam+tel+mal', {
+                logger: m => console.log(m)
+            }).then(({ data: { text } }) => {
+                displayOutput(text || "No text detected!");
+            }).catch(error => {
+                displayError("Error processing image.");
+                console.error(error);
+            });
+        };
+    }
+
+    // Display Extracted Text
+    function displayOutput(text) {
+        loadingText.style.display = "none";
+        outputText.style.display = "block";
+        outputText.innerText = text;
+        processBtn.disabled = false;
+    }
+
+    // Handle Errors
+    function displayError(message) {
+        loadingText.style.display = "none";
+        outputText.style.display = "block";
+        outputText.innerText = message;
+        processBtn.disabled = false;
+    }
+});
+
+document.addEventListener("DOMContentLoaded", function () {
+    fetch("/get_clustered_data")
+        .then(response => response.json())
+        .then(data => visualizeClusters(data))
+        .catch(error => console.error("Error fetching cluster data:", error));
+});
+
+function visualizeClusters(data) {
+    if (!data.length) {
+        console.error("No transaction data available.");
+        return;
+    }
+
+    const labels = data.map(d => d.transaction_id);
+    const amounts = data.map(d => d.transaction_amount);
+    const clusters = data.map(d => d.Cluster);
+
+    const colors = clusters.map(cluster => cluster === 0 ? "red" : cluster === 1 ? "blue" : "green");
+
+    if (window.clusterChart) window.clusterChart.destroy();
+
+    const ctx = document.getElementById("clusterChart").getContext("2d");
+    window.clusterChart = new Chart(ctx, {
+        type: "scatter",
+        data: {
+            datasets: [{
+                label: "Transaction Clusters",
+                data: labels.map((label, index) => ({
+                    x: amounts[index],
+                    y: index
+                })),
+                backgroundColor: colors,
+                borderColor: "#000",
+                borderWidth: 1,
+                pointRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { title: { display: true, text: "Transaction Amount ($)" } },
+                y: { title: { display: true, text: "Transaction Index" } }
+            }
+        }
+    });
+}
+
+
+/*function processOCR() {
+let fileInput = document.getElementById("fileInput");
+            let processBtn = document.getElementById("processBtn");
+            let loadingText = document.getElementById("loadingText");
+            let outputText = document.getElementById("outputText");
+
+            if (fileInput.files.length === 0) {
+                alert("Please select a file first!");
+                return;
+            }
+
+            processBtn.disabled = true;
+            loadingText.style.display = "block";
+
+            setTimeout(() => {
+                loadingText.style.display = "none";
+                outputText.style.display = "block";
+                outputText.innerHTML = "<b>OCR Extraction Complete:</b> Extracted text will be displayed here.";
+                processBtn.disabled = false;
+            }, 2000);  // Simulate processing delay
+    }
+
+    if (!fileInput.files.length) {
+        alert("Please select a file!");
+        return;
+    }
+
+    let file = fileInput.files[0];
+    let reader = new FileReader();
+
+    if (file.type === "application/pdf") {
+        reader.onload = function () {
+            const typedArray = new Uint8Array(reader.result);
+            pdfjsLib.getDocument(typedArray).promise.then(pdf => {
+                let textContent = "";
+                let pagesPromises = [];
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    pagesPromises.push(
+                        pdf.getPage(i).then(page => {
+                            return page.getTextContent().then(textContentObj => {
+                                textContent += textContentObj.items.map(item => item.str).join(" ") + "\n";
+                            });
+                        })
+                    );
+                }
+
+                Promise.all(pagesPromises).then(() => {
+                    outputText.innerText = textContent || "No text found in PDF.";
+                });
+            }).catch(error => {
+                outputText.innerText = "Error processing the PDF document.";
+                console.error(error);
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    } else {
+        reader.onload = function () {
+            Tesseract.recognize(reader.result, "eng", { logger: m => console.log(m) })
+            .then(({ data: { text } }) => {
+                outputText.innerText = text || "No text extracted.";
+            })
+            .catch(error => {
+                outputText.innerText = "Error processing the image.";
+                console.error(error);
+            });
+        };
+        reader.readAsDataURL(file);
+    }*/
+
+
+    </script>
+    <script src="script.js"></script>
+
+    <footer class="footer">
+        <p>&copy; 2025 BFSI OCR System. All Rights Reserved.</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,396 @@
+body {
+    height:1000px;
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+}
+
+.navbar {
+    background-color: #01293d;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: white;
+}
+
+.navbar ul {
+    list-style: none;
+    display: flex;
+}
+
+.navbar ul li {
+    margin: 0 15px;
+}
+
+.navbar ul li a {
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.home-container {
+    padding: 50px;
+    height: 1000px;
+}
+
+.card-container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 30px;
+}
+
+.card {
+    width: 250px;
+    padding: 20px;
+    background-color: #f4f4f4;
+    text-align: center;
+    border-radius: 8px;
+    text-decoration: none;
+    color: black;
+}
+
+.card:hover {
+    background-color: #ddd;
+}
+
+.page-container {
+    padding: 50px;
+}
+
+textarea {
+    width: 100%;
+    height: 150px;
+    margin-top: 10px;
+    padding: 10px;
+}
+.button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+.button:disabled {
+    background-color: #ccc;
+}
+/* Center both dropdowns inside a container */
+.select-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center the elements */
+    justify-content: center;
+    width: 100%;
+    margin-top: 10px;
+}
+
+/* Style for dropdowns */
+.select-box {
+    width: 350px; /* Adjust width to match Select Learning Type */
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    text-align: center;
+    background-color: white;
+}
+
+/* Card-like style to match Select Learning Type */
+.dropdown-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+    text-align: center;
+    width: 400px;
+    margin: auto; /* Centers the card */
+}
+
+form {
+    text-align: center;
+    background: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+    width: 350px;
+    margin: auto;
+}
+/* Styling for labels */
+label {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+    display: block;  /* Ensures the label appears above the dropdown */
+    margin-bottom: 5px;
+}
+
+/* Styling for the dropdown */
+select {
+    width: 100%;
+    justify-content: center;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 16px;
+    background-color: white;
+}
+.chart-container {
+    width: 80%;
+    margin: 20px auto;
+}
+.output {
+    margin-top: 15px;
+    padding: 10px;
+    background: #e9ecef;
+    border-radius: 5px;
+    text-align: left;
+    max-height: 200px;
+    overflow-y: auto;
+    width: 100%;
+    height:1000px;
+}
+.about-container {
+    max-width: 800px;
+    margin: 50px auto;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.about-container h2 {
+    font-size: 32px;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.about-container p {
+    font-size: 16px;
+    color: #555;
+    line-height: 1.6;
+}
+
+.about-container ul {
+    font-size: 16px;
+    color: #555;
+    padding-left: 20px;
+}
+
+.about-container ul li {
+    margin-bottom: 10px;
+}
+
+.about-container h3 {
+    font-size: 24px;
+    color: #333;
+    margin-top: 30px;
+    margin-bottom: 10px;
+}
+.contact
+{
+height:200px;
+width:1000px;
+margin-left:auto;
+margin-right:auto;
+background-color:#993333;
+}
+.map
+{
+float:left;
+}
+
+.address
+{
+height:150px;
+width:1000px;
+float:left;
+background-color:#990033;
+color:#000000;
+text-align:center;
+font-size:16px;
+font-family:"Courier New", Courier, monospace;
+}
+.contact1
+{
+height:150px;
+width:1000px;
+float:left;
+background-color:#990066;
+color:#000000;
+text-align:center;
+font-size:16px;
+font-family:"Courier New", Courier, monospace;
+}
+
+.container {
+    background: white;
+    padding: 20px;
+    margin: 50px auto;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    width: 800px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+h2 {
+    color: #333;
+    margin-bottom: 15px;
+}
+input, label, button {
+    width: calc(100% - 20px);
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    display: block;
+    text-align: left;
+}
+label {
+    font-weight: bold;
+    margin-top: 15px;
+}
+input[type="file"] {
+    padding: 5px;
+    background: white;
+}
+button {
+    background: #6e8efb;
+    color: white;
+    font-size: 16px;
+    text-align:center;
+    border: none;
+    cursor: pointer;
+    margin-top: 15px;
+}
+button:hover {
+    background: #5a7bd5;
+}
+#status {
+    margin-top: 15px;
+    font-weight: bold;
+}
+
+.register {
+    width: 90%;
+    max-width: 400px;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0px 0px 10px gray;
+    text-align: left;
+    margin: 50px auto;  /* Center horizontally */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    width: 80%;
+}
+
+label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    display: block;
+}
+
+input[type="text"], 
+input[type="password"], 
+input[type="number"], 
+input[type="date"], 
+input[type="email"] {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.gender-container {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+  }
+  
+  .gender-label {
+    font-size: 16px;
+    cursor: pointer;
+  }
+  
+  input[type="radio"] {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid #4CAF50;
+    background-color: white;
+    position: relative;
+    transition: all 0.3s;
+    cursor: pointer;
+  }
+
+  input[type="radio"]:checked {
+    background-color: #4CAF50;
+    border-color: #4CAF50;
+  }
+
+  input[type="radio"]:checked::before {
+    content: '';
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: white;
+  }
+
+  input[type="radio"]:focus {
+    outline: none;
+  }
+
+  label:hover {
+    color: #4CAF50;
+  }
+
+button {
+    width: 100%;
+    padding: 10px;
+    background: blue;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 5px;
+}
+
+button:hover {
+    background: darkblue;
+}
+
+#result {
+    font-size: 18px;
+    font-weight: bold;
+    margin-top: 20px;
+}
+
+
+
+.footer {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: #004466;
+    color: white;
+}

@@ -8,24 +8,39 @@ import matplotlib.pyplot as plt
 from pdf2image import convert_from_bytes
 import re
 import io
+import bcrypt
+import jwt
+import datetime
+import math
 
 # Set page config
-st.set_page_config(page_title="BFSI OCR", layout="wide")
+st.set_page_config(page_title="AI-Based Loan Approval & Document Processor", layout="wide")
+
+# Secret key for JWT
+token_secret = "your_secret_key"
 
 # Initialize session state for authentication
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
+if "token" not in st.session_state:
+    st.session_state.token = None
 if "users" not in st.session_state:
-    st.session_state.users = {"admin@example.com": "password"}  # Default admin user
+    st.session_state.users = {
+        "admin@example.com": bcrypt.hashpw("password".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    }  # Default admin user with hashed password
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "login"
 
 # Function to authenticate user
 def authenticate(email, password):
-    if email in st.session_state.users and st.session_state.users[email] == password:
-        st.session_state.authenticated = True
-        st.session_state.current_user = email  # Store current user session
-        st.success("✅ Login Successful! Redirecting...")
-        st.rerun()
+    if email in st.session_state.users:
+        stored_hash = st.session_state.users[email]
+        if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
+            payload = {"email": email, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}
+            token = jwt.encode(payload, token_secret, algorithm='HS256')
+            st.session_state.token = token
+            st.session_state.current_page = "home"
+            st.rerun()
+        else:
+            st.error("❌ Invalid credentials. Please try again.")
     else:
         st.error("❌ Invalid credentials. Please try again.")
 
@@ -34,107 +49,162 @@ def register_user(email, password):
     if email in st.session_state.users:
         st.error("⚠️ Email already registered. Please login.")
     else:
-        st.session_state.users[email] = password
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        st.session_state.users[email] = hashed_password
         st.success("✅ Registration successful! You can now login.")
+        st.session_state.current_page = "login"
+        st.rerun()
 
 # Logout Function
 def logout():
-    st.session_state.authenticated = False
-    st.session_state.current_user = None
-    st.success("✅ Logged out successfully!")
+    st.session_state.token = None
+    st.session_state.current_page = "login"
     st.rerun()
 
-# Show login form only if not authenticated
-if not st.session_state.authenticated:
-    st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Go to", ["Login", "Register"])
+# EMI Calculation Function
+def calculate_emi(principal, annual_rate, tenure_years):
+    monthly_rate = annual_rate / (12 * 100)  # Convert annual rate to monthly
+    tenure_months = tenure_years * 12  # Convert years to months
 
-    if page == "Login":
+    if monthly_rate == 0:
+        emi = principal / tenure_months  # Simple division if interest rate is 0%
+    else:
+        emi = (principal * monthly_rate * math.pow(1 + monthly_rate, tenure_months)) / (math.pow(1 + monthly_rate, tenure_months) - 1)
+
+    return round(emi, 2), round(emi * tenure_months, 2), round((emi * tenure_months) - principal, 2)
+
+
+# Function to verify JWT token
+def verify_token():
+    if st.session_state.token:
+        try:
+            jwt.decode(st.session_state.token, token_secret, algorithms=['HS256'])
+            return True
+        except jwt.ExpiredSignatureError:
+            st.session_state.token = None
+            st.warning("⚠️ Session expired. Please login again.")
+        except jwt.InvalidTokenError:
+            st.session_state.token = None
+            st.warning("⚠️ Invalid session. Please login again.")
+    return False
+
+# OCR Function
+def extract_text(image):
+    return pytesseract.image_to_string(image)
+
+# Process text to extract financial transactions
+def process_financial_text(text):
+    transactions = []
+    for line in text.split('\n'):
+        match = re.search(r'(\d{2}-\d{2}-\d{4})\s+(.+?)\s+([\d,.]+)', line)
+        if match:
+            date, description, amount = match.groups()
+            transactions.append((date, description, float(amount.replace(',', ''))))
+    return transactions
+
+
+# Visualization function
+def visualize_financial_data(transactions):
+    if not transactions:
+        st.warning("No valid transactions found.")
+        return
+    
+    df = pd.DataFrame(transactions, columns=['Date', 'Description', 'Amount'])
+    # Save CSV file
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button(label="Download CSV", data=csv, file_name="transactions.csv", mime='text/csv')
+
+    
+    # Bar Chart
+    st.subheader("Transaction Bar Chart")
+    fig_bar, ax_bar = plt.subplots(figsize=(10, 3))
+    df.plot(kind='bar', x='Date', y='Amount', ax=ax_bar, color='royalblue', legend=False)
+    ax_bar.set_title("Transaction Bar Chart", color='white')
+    ax_bar.set_ylabel("Amount", color='white')
+    ax_bar.set_xlabel("Date", color='white')
+    fig_bar.patch.set_alpha(0)  # Set background transparent
+    ax_bar.set_facecolor("black")  # Dark background
+    ax_bar.tick_params(axis='x', colors='white')
+    ax_bar.tick_params(axis='y', colors='white')
+    st.pyplot(fig_bar)
+
+    # Pie Chart
+    st.subheader("Transaction Pie Chart")
+    fig, ax = plt.subplots(figsize=(8, 6))  # Increase figure size
+
+# Create pie chart with better label positioning
+    wedges, texts, autotexts = ax.pie(
+        df["Amount"], 
+        labels=df["Description"], 
+        autopct='%1.1f%%', 
+        colors=plt.cm.Pastel1.colors,
+        textprops={'fontsize': 10},  # Reduce font size
+        startangle=140,  # Rotate for better readability
+        pctdistance=0.75  # Move percentage labels inside
+    )
+
+    # Adjust text colors
+    for text in texts + autotexts:
+        text.set_color("white")
+
+    # Move legend outside
+    ax.legend(wedges, df["Description"], title="Categories", loc="center left", bbox_to_anchor=(1, 0.5))
+
+    # Remove background
+    fig_bar.patch.set_alpha(0)  # Set background transparent
+    ax_bar.set_facecolor("black")  # Dark background
+
+    st.pyplot(fig)
+
+
+    # Line Chart
+    st.subheader("Transaction Line Chart")
+    fig_line, ax_line = plt.subplots(figsize=(10, 3))
+    df.plot(kind='line', x='Date', y='Amount', ax=ax_line, marker='o', linestyle='-', color='navy', legend=False)
+    ax_line.set_title("Transaction Line Chart", color='white')
+    ax_line.set_ylabel("Amount", color='white')
+    ax_line.set_xlabel("Date", color='white')
+    fig_line.patch.set_alpha(0)  # Set background transparent
+    ax_line.set_facecolor("black")  # Dark background
+    ax_line.tick_params(axis='x', colors='white')
+    ax_line.tick_params(axis='y', colors='white')
+    st.pyplot(fig_line)
+
+# Page Routing
+if not verify_token():
+    if st.session_state.current_page == "login":
         st.title("🔒 Login")
-        email = st.text_input("Email", placeholder="Enter your email")
-        password = st.text_input("Password", placeholder="Enter your password", type="password")
-        if st.button("Login"):
-            authenticate(email, password)
-
-    elif page == "Register":
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Login"):
+                authenticate(email, password)
+        with col2:
+            if st.button("Register"):
+                st.session_state.current_page = "register"
+                st.rerun()
+    elif st.session_state.current_page == "register":
         st.title("📝 Register")
-        new_email = st.text_input("Email", placeholder="Enter your email")
-        new_password = st.text_input("Password", placeholder="Create a password", type="password")
-        if st.button("Register"):
-            register_user(new_email, new_password)
-
+        new_email = st.text_input("Email")
+        new_password = st.text_input("Password", type="password")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Register"):
+                register_user(new_email, new_password)
+        with col2:
+            if st.button("Back to Login"):
+                st.session_state.current_page = "login"
+                st.rerun()
 else:
-    # Show menu after login
-    st.sidebar.title("Menu")
-    menu = st.sidebar.radio("Select a Page", ["Home", "Document Processor", "Student Loan Approval", "Logout"], index=0)
-
-    if menu == "Home":
-        st.title("🏠 Welcome to BFSI OCR Website")
-        st.write(f"Logged in as: {st.session_state.current_user}")
-
-    elif menu == "Document Processor":
+    # Tab Navigation
+    tab1, tab2, tab3, tab4 = st.tabs(["Home", "Document Processor", "Loan Eligibility", "Logout"])
+    
+    with tab1:
+        st.title("🏠 Welcome to AI-Based Loan Approval & Document Processor")
+    
+    with tab2:
         st.title("📄 Document Processor")
-        st.write("Upload and process documents here.")
-
-    elif menu == "Student Loan Approval":
-        st.title("💰 Student Loan Approval")
-        st.write("Apply for a student loan based on AI-based eligibility criteria.")
-
-    elif menu == "Logout":
-        logout()
-
-    # OCR Function
-    def extract_text(image):
-        return pytesseract.image_to_string(image)
-
-    # Process text to extract financial transactions
-    def process_financial_text(text):
-        transactions = []
-        for line in text.split('\n'):
-            match = re.search(r'(\d{2}-\d{2}-\d{4})\s+(.+?)\s+([\d,.]+)', line)
-            if match:
-                date, description, amount = match.groups()
-                transactions.append((date, description, float(amount.replace(',', ''))))
-        return transactions
-
-    # Visualization function
-    def visualize_financial_data(transactions):
-        if not transactions:
-            st.warning("No valid transactions found.")
-            return
-        
-        df = pd.DataFrame(transactions, columns=['Date', 'Description', 'Amount'])
-
-        # Bar Chart
-        st.subheader("Transaction Bar Chart")
-        fig_bar, ax_bar = plt.subplots(figsize=(10, 3))
-        df.plot(kind='bar', x='Date', y='Amount', ax=ax_bar, color='royalblue', legend=False)
-        ax_bar.set_title("Transaction Bar Chart")
-        ax_bar.set_ylabel("Amount")
-        ax_bar.set_xlabel("Date")
-        st.pyplot(fig_bar)
-
-        # Pie Chart
-        st.subheader("Transaction Pie Chart")
-        pastel_colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#c2c2f0', '#ffb3e6', '#c2f0c2', '#f0e68c']
-        fig_pie, ax_pie = plt.subplots(figsize=(6, 6))
-        df.groupby('Date')['Amount'].sum().plot(kind='pie', autopct='%1.1f%%', colors=pastel_colors, ax=ax_pie)
-        ax_pie.set_ylabel("")
-        ax_pie.set_title("Transaction Pie Chart")
-        st.pyplot(fig_pie)
-
-        # Line Cha
-        st.subheader("Transaction Line Chart")
-        fig_line, ax_line = plt.subplots(figsize=(10, 3))
-        df.plot(kind='line', x='Date', y='Amount', ax=ax_line, marker='o', linestyle='-', color='navy', legend=False)
-        ax_line.set_title("Transaction Line Chart")
-        ax_line.set_ylabel("Amount")
-        ax_line.set_xlabel("Date")
-        st.pyplot(fig_line)
-
-    # Document Processor
-    if menu == "Document Processor":
-        st.title("Document Processor")
         doc_type = st.selectbox("Select Type", ["--Select--","Supervised", "Unsupervised", "Semi-Supervised"])
         
         sub_type = None
@@ -163,18 +233,18 @@ else:
 
                 transactions = process_financial_text(text)
                 if transactions:
-                    transaction_text = '\n'.join([f"{t[0]} - {t[1]}: {t[2]}" for t in transactions])
-                    st.text_area("Extracted Transactions", transaction_text, height=200)
+                    st.subheader("Extracted Transactions")
+                    df = pd.DataFrame(transactions, columns=['Date', 'Description', 'Amount'])
+                    st.dataframe(df)
                     
                     # Show Visualizations
                     st.subheader("Visualizations")
                     visualize_financial_data(transactions)
                 else:
                     st.warning("No financial transactions detected.")
-
-
-    elif menu == "Student Loan Approval":
-        
+    
+    with tab3:
+        st.title("💰 Student Loan Approval")
         name = st.text_input("Student Name")
         email = st.text_input("Email")
         phone = st.text_input("Phone Number")
@@ -182,15 +252,108 @@ else:
         marks_12 = st.number_input("12th Grade Score (%)", min_value=0, max_value=100, value=60)
         income = st.number_input("Monthly Income", min_value=0, step=100000)
         loan_amount = st.number_input("Loan Amount", min_value=0, step=100000)
-        cibil = st.number_input("CIBIL Score", min_value=300, max_value=900, step=10)
+        cibil = st.slider("CIBIL Score", min_value=300, max_value=900, step=10)
         tenure = st.selectbox("Loan Tenure", [1, 3, 5, 7, 10, 15])
         
         banks = [
-            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 300, "Tenure": [1, 3, 5, 10]},
-            {"Bank": "Punjab National Bank", "Min Income": 20000, "CIBIL": 650, "Tenure": [1, 5, 7]},
-            {"Bank": "HDFC", "Min Income": 5000, "CIBIL": 550, "Tenure": [1, 3, 5, 10, 15]},
-            {"Bank": "Central Bank of India", "Min Income": 30000, "CIBIL": 700, "Tenure": [5, 10]}
+            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Quick approval", "Low interest rates", "Good customer service"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.5, "Processing Time": 5, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Fast processing", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 15000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 6, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.2, "Reviews": ["Good service", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 10000, "CIBIL": 300, "Tenure": [1, 2, 3], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.3, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 30, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.4, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.3, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 15000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.2, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.1, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "Low interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 10000, "CIBIL": 300, "Tenure": [1, 2, 3], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.3, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.4, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.3, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 15000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.2, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.1, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "Low interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
+            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
+            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
+            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+
         ]
+           
         
         if st.button("Find Banks"):
             available_banks = [
@@ -200,6 +363,79 @@ else:
             if available_banks:
                 st.subheader("Banks Offering Loans")
                 for bank in available_banks:
-                    st.write(f"**{bank['Bank']}** - Available for tenure: {', '.join(map(str, bank['Tenure']))} years")
+                    with st.expander(f"💰 **{bank['Bank']}** (⭐ {bank['Rating']}/5)"):
+                        # Loan details
+                        st.write(f"📅 **Available Tenure:** {', '.join(map(str, bank['Tenure']))} years")
+                        st.write(f"💵 **Loan Amount:** ₹{bank['Loan Amount Min']} - ₹{bank['Loan Amount Max']}")
+                        st.write(f"💲 **Interest Rate:** {bank['Interest Rate']}%")
+                        st.write(f"⏳ **Processing Time:** {bank['Processing Time']} days")
+
+
+                        # User Reviews
+                        st.write("💬 **User Reviews:**")
+                        for review in bank['Reviews']:
+                            st.write(f"📝 {review}")
+
             else:
                 st.warning("No banks found matching the criteria.")
+            
+        st.divider()
+        st.title("📊 EMI Calculator")
+
+        # User Inputs
+        loan_amount = st.number_input("Enter Loan Amount (₹)", min_value=10000, max_value=5000000, value=100000, step=5000, key="loan_amt")
+        interest_rate = st.number_input("Enter Annual Interest Rate (%)", min_value=1.0, max_value=20.0, value=10.0, step=0.1, key="int_rate")
+        loan_tenure = st.number_input("Enter Loan Tenure (Years)", min_value=1, max_value=30, value=5, step=1, key="loan_tenure")
+
+        # Calculate EMI on button click
+        if st.button("📌 Calculate EMI"):
+            emi, total_payment, total_interest = calculate_emi(loan_amount, interest_rate, loan_tenure)
+
+            # Display Results
+            st.subheader("💰 EMI Details")
+            st.write(f"🟢 **Monthly EMI:** ₹{emi}")
+            st.write(f"📈 **Total Interest Payable:** ₹{total_interest}")
+            st.write(f"💵 **Total Payment (Principal + Interest):** ₹{total_payment}")
+
+            # Visual Representation
+            st.progress(min(int((loan_amount / total_payment) * 100), 100))
+
+            # Pie Chart for Principal vs Interest (Reduced Size)
+            fig, ax = plt.subplots(figsize=(4, 4))  # Adjust figure size
+            fig.patch.set_alpha(0)  # Make figure background transparent
+            ax.patch.set_alpha(0)  # Make axes background transparent
+
+            labels = ["Principal", "Interest"]
+            sizes = [loan_amount, total_interest]
+
+            # Transparent Blue Shades (RGBA Format)
+            colors = [(0.1, 0.4, 0.8, 0.5), (0.3, 0.6, 0.9, 0.5)]  
+
+            # Plot Pie Chart
+            wedges, texts, autotexts = ax.pie(
+                sizes, labels=labels, autopct="%1.1f%%", colors=colors, 
+                startangle=90, wedgeprops={'edgecolor': 'black', 'linewidth': 1, 'alpha': 0.7}, 
+                pctdistance=0.85, radius=0.6  # Further reduced pie size
+            )
+
+            # Improve text visibility
+            for text in texts:
+                text.set_color("white")  # Label color
+            for autotext in autotexts:
+                autotext.set_color("black")  # Percentage color
+                autotext.set_fontsize(9)  # Adjust font size
+
+            # Title Adjustments
+            ax.set_title("Loan Breakdown (Principal vs. Interest)", fontsize=10, color='blue')
+
+            # Ensure Circular Pie
+            ax.axis("equal")
+
+            # Display in Streamlit without auto-expanding
+            st.pyplot(fig, use_container_width=False)
+
+
+    
+    with tab4:
+        if st.button("Logout"):
+            logout()

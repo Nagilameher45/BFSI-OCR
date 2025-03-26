@@ -1,4 +1,6 @@
 import streamlit as st
+import auth
+import yfinance as yf
 import pandas as pd
 import pytesseract
 import cv2
@@ -14,7 +16,7 @@ import datetime
 import math
 
 # Set page config
-st.set_page_config(page_title="AI-Based Loan Approval & Document Processor", layout="wide")
+st.set_page_config(page_title="BFSI OCR & LOAN ELIGIBILITY", layout="wide")
 
 # Secret key for JWT
 token_secret = "your_secret_key"
@@ -170,6 +172,11 @@ def visualize_financial_data(transactions):
     ax_line.tick_params(axis='y', colors='white')
     st.pyplot(fig_line)
 
+def fetch_stock_data(ticker, start_date, end_date):
+    stock = yf.Ticker(ticker)
+    data = stock.history(start=start_date, end=end_date)
+    return data
+
 # Page Routing
 if not verify_token():
     if st.session_state.current_page == "login":
@@ -201,7 +208,7 @@ else:
     tab1, tab2, tab3, tab4 = st.tabs(["Home", "Document Processor", "Loan Eligibility", "Logout"])
     
     with tab1:
-        st.title("🏠 Welcome to AI-Based Loan Approval & Document Processor")
+        st.title("🏠 Welcome to Smart BFSI OCR & Student Loan Eligibility")
     
     with tab2:
         st.title("📄 Document Processor")
@@ -215,36 +222,71 @@ else:
         elif doc_type == "Semi-Supervised":
             sub_type = st.selectbox("Select Document Type", ["--Select--","Handwritten Document"])
         
-        uploaded_file = st.file_uploader("Upload Document", type=["png", "jpg", "jpeg", "pdf"])
         
-        if uploaded_file and sub_type:
-            image = None
-            if uploaded_file.name.endswith(".pdf"):
-                pdf_bytes = uploaded_file.read()
-                images = convert_from_bytes(pdf_bytes)
-                image = images[0] if images else None
-            else:
-                image = Image.open(io.BytesIO(uploaded_file.read()))
-            
-            if image:
-                st.image(image, caption="Uploaded Document", use_column_width=True)
-                text = extract_text(image)
-                st.text_area("Extracted Full Text", text, height=300)
-
-                transactions = process_financial_text(text)
-                if transactions:
-                    st.subheader("Extracted Transactions")
-                    df = pd.DataFrame(transactions, columns=['Date', 'Description', 'Amount'])
-                    st.dataframe(df)
-                    
-                    # Show Visualizations
-                    st.subheader("Visualizations")
-                    visualize_financial_data(transactions)
+        if doc_type in ["Supervised", "Semi-Supervised"]:
+            uploaded_file = st.file_uploader("Upload Document", type=["png", "jpg", "jpeg", "pdf"])
+            if uploaded_file and sub_type:
+                image = None
+                if uploaded_file.name.endswith(".pdf"):
+                    pdf_bytes = uploaded_file.read()
+                    images = convert_from_bytes(pdf_bytes)
+                    image = images[0] if images else None
                 else:
-                    st.warning("No financial transactions detected.")
+                    image = Image.open(io.BytesIO(uploaded_file.read()))
+                
+                if image:
+                    st.image(image, caption="Uploaded Document", use_column_width=True)
+                    text = extract_text(image)
+                    st.text_area("Extracted Full Text", text, height=300)
+
+                    transactions = process_financial_text(text)
+                    if transactions:
+                        st.subheader("Extracted Transactions")
+                        df = pd.DataFrame(transactions, columns=['Date', 'Description', 'Amount'])
+                        st.dataframe(df)
+                        
+                        # Show Visualizations
+                        st.subheader("Visualizations")
+                        visualize_financial_data(transactions)
+                    else:
+                        st.warning("No financial transactions detected.")
+
+        elif sub_type and sub_type == "Stock Market":
+            st.subheader("📈 Stock Market Analysis")
+            stock1 = st.text_input("Enter First Stock Ticker (e.g., AAPL)")
+            stock2 = st.text_input("Enter Second Stock Ticker (e.g., MSFT)")
+            start_date = st.date_input("Select Start Date")
+            end_date = st.date_input("Select End Date")
+            
+            if st.button("Compare Stocks"):
+                if stock1 and stock2:
+                    df1 = fetch_stock_data(stock1, start_date, end_date)
+                    df2 = fetch_stock_data(stock2, start_date, end_date)
+                    
+                    if df1 is not None and df2 is not None:
+                        st.subheader("Closing Price Comparison")
+                        fig, ax = plt.subplots()
+                        ax.plot(df1.index, df1['Close'], label=stock1)
+                        ax.plot(df2.index, df2['Close'], label=stock2)
+                        ax.set_xlabel("Date")
+                        ax.set_ylabel("Closing Price")
+                        ax.legend()
+                        st.pyplot(fig)
+                        
+                        st.subheader("Trading Volume Comparison")
+                        fig, ax = plt.subplots()
+                        ax.bar(df1.index, df1['Volume'], alpha=0.5, label=stock1)
+                        ax.bar(df2.index, df2['Volume'], alpha=0.5, label=stock2)
+                        ax.set_xlabel("Date")
+                        ax.set_ylabel("Volume")
+                        ax.legend()
+                        st.pyplot(fig)
+                else:
+                    st.error("Error fetching stock data. Please check tickers and date range.")
+
     
     with tab3:
-        st.title("💰 Student Loan Approval")
+        st.title("💰 Student Loan Eligibility")
         name = st.text_input("Student Name")
         email = st.text_input("Email")
         phone = st.text_input("Phone Number")
@@ -257,100 +299,61 @@ else:
         
         banks = [
             {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Quick approval", "Low interest rates", "Good customer service"]},
-            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.5, "Processing Time": 5, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Fast processing", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 15000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 6, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.2, "Reviews": ["Good service", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 10000, "CIBIL": 300, "Tenure": [1, 2, 3], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.3, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 30, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.4, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.3, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 15000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.2, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.1, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "Low interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 10000, "CIBIL": 300, "Tenure": [1, 2, 3], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.3, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.4, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.3, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 15000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.2, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.1, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "Low interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.4, "Reviews": ["Fast processing", "Low interest rates", "Good customer service"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates", "Good customer service"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates", "Good customer service"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates", "Good customer service"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates", "Good customer service"]},
             {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
             {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
             {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
             {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
             {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
-            {"Bank": "HDFC Bank", "Min Income": 15000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.4, "Reviews": ["Good service", "High interest rates"]},
-            {"Bank": "ICICI Bank", "Min Income": 18000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.3, "Reviews": ["Quick approval", "Flexible tenure"]},
-            {"Bank": "Bajaj Finserv", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 13.0, "Processing Time": 4, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.2, "Reviews": ["Easy process", "High interest rates"]},
-            {"Bank": "Fullerton India", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4], "Interest Rate": 12.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 750000, "Rating": 4.1, "Reviews": ["Quick approval", "Low interest rates"]},
-            {"Bank": "Kotak Mahindra Bank", "Min Income": 15000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 11.5, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 750, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 800, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 850, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "SBI of India", "Min Income": 12000, "CIBIL": 900, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.0, "Processing Time": 5, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Fast processing", "Low interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.5, "Processing Time": 5, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.0, "Reviews": ["Fast processing", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.3, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 750, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 800, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 850, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "HDFC Bank", "Min Income": 12000, "CIBIL": 900, "Tenure": [1, 2, 3, 4, 5, 6], "Interest Rate": 11.0, "Processing Time": 6, "Loan Amount Min": 15000, "Loan Amount Max": 750000, "Rating": 4.2, "Reviews": ["Good service", "High interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.5, "Processing Time": 6, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.1, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 100000 , "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 750, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 800, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 850, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "ICICI Bank", "Min Income": 12000, "CIBIL": 900, "Tenure": [1, 2, 3, 4, 5, 6, 7], "Interest Rate": 12.0, "Processing Time": 7, "Loan Amount Min": 20000, "Loan Amount Max": 1000000, "Rating": 4.0, "Reviews": ["Average service", "Moderate interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.5, "Processing Time": 7, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.9, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 330, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 350, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 370, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 400, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 450, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 500, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
 
         ]
            

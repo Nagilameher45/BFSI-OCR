@@ -1,0 +1,12 @@
+streamlit
+pandas
+numpy
+matplotlib
+opencv-python
+pillow
+pytesseract
+pdf2image
+bcrypt
+PyJWT
+yfinance
+sqlite3

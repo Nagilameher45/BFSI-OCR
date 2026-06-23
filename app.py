@@ -14,7 +14,9 @@ import bcrypt
 import jwt
 import datetime
 import math
+import pickle
 
+model = pickle.load(open("model.pkl", "rb"))
 # Set page config
 st.set_page_config(page_title="BFSI OCR & LOAN ELIGIBILITY", layout="wide")
 
@@ -296,15 +298,16 @@ else:
     
     with tab3:
         st.title("💰 Student Loan Eligibility")
+
         name = st.text_input("Student Name")
         email = st.text_input("Email")
         phone = st.text_input("Phone Number")
-        marks_10 = st.number_input("10th Grade Score (%)", min_value=0, max_value=100, value=60)
-        marks_12 = st.number_input("12th Grade Score (%)", min_value=0, max_value=100, value=60)
-        income = st.number_input("Monthly Income", min_value=0, step=100000)
-        loan_amount = st.number_input("Loan Amount", min_value=0, step=100000)
-        cibil = st.slider("CIBIL Score", min_value=300, max_value=900, step=10)
-        tenure = st.selectbox("Loan Tenure", [1, 3, 5, 7, 10, 15])
+        marks_10 = st.number_input("10th Grade Score (%)")
+        marks_12 = st.number_input("12th Grade Score (%)")
+        income = st.number_input("Monthly Income")
+        loan_amount = st.number_input("Loan Amount")
+        cibil = st.slider("CIBIL Score",300,900,650)
+        tenure = st.selectbox("Loan Tenure", [1,3,5,7,10,15])
         
         banks = [
             {"Bank": "SBI of India", "Min Income": 10000, "CIBIL": 300, "Tenure": [1, 2, 3, 4, 5], "Interest Rate": 10.5, "Processing Time": 7, "Loan Amount Min": 10000, "Loan Amount Max": 500000, "Rating": 4.5, "Reviews": ["Quick approval", "Low interest rates", "Good customer service"]},
@@ -362,34 +365,102 @@ else:
             {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 550, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
             {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 600, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
             {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 650, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
-            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 700, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
+            {"Bank": "Axis Bank", "Min Income": 12000, "CIBIL": 750, "Tenure": [1, 2, 3, 4, 5, 6, 7, 8], "Interest Rate": 13.0, "Processing Time": 8, "Loan Amount Min": 25000, "Loan Amount Max": 1250000, "Rating": 3.8, "Reviews": ["Slow processing", "High interest rates"]},
 
         ]
            
-        
         if st.button("Find Banks"):
+
+    # AI Prediction
+            prediction = model.predict(
+                [[income, cibil, loan_amount]]
+            )
+
+            probability = model.predict_proba(
+                [[income, cibil, loan_amount]]
+            )
+
+            confidence = probability[0][1] * 100
+
+            st.subheader("🤖 AI Loan Prediction")
+
+            if prediction[0] == 1:
+                st.success("✅ Loan Approved")
+
+            else:
+                st.error("❌ Loan Rejected")
+
+
+            st.write(
+                f"Approval Probability: {confidence:.2f}%"
+            )
+            st.write("Income:", income)
+            st.write("CIBIL:", cibil)
+            st.write("Tenure:", tenure)
+
+           # Bank Filtering
             available_banks = [
-                bank for bank in banks if income >= bank["Min Income"] and cibil >= bank["CIBIL"] and tenure in bank["Tenure"]
+                bank for bank in banks
+                if income >= bank["Min Income"]
+                and cibil >= bank["CIBIL"]
+                and tenure in bank["Tenure"]
             ]
+
             
+
             if available_banks:
-                st.subheader("Banks Offering Loans")
+                st.subheader("🏦 Banks Offering Loans")
+
                 for bank in available_banks:
-                    with st.expander(f"💰 **{bank['Bank']}** (⭐ {bank['Rating']}/5)"):
-                        # Loan details
-                        st.write(f"📅 **Available Tenure:** {', '.join(map(str, bank['Tenure']))} years")
-                        st.write(f"💵 **Loan Amount:** ₹{bank['Loan Amount Min']} - ₹{bank['Loan Amount Max']}")
-                        st.write(f"💲 **Interest Rate:** {bank['Interest Rate']}%")
-                        st.write(f"⏳ **Processing Time:** {bank['Processing Time']} days")
+                    with st.expander(
+                        f"💰 {bank['Bank']} (⭐ {bank['Rating']}/5)"
+                    ):
 
+                        st.write(
+                            f"📅 Available Tenure: "
+                            f"{', '.join(map(str, bank['Tenure']))} years"
+                        )
 
-                        # User Reviews
-                        st.write("💬 **User Reviews:**")
-                        for review in bank['Reviews']:
+                        st.write(
+                            f"💵 Loan Amount: "
+                            f"₹{bank['Loan Amount Min']} - "
+                            f"₹{bank['Loan Amount Max']}"
+                        )
+
+                        st.write(
+                            f"💲 Interest Rate: "
+                            f"{bank['Interest Rate']}%"
+                        )
+
+                        st.write(
+                            f"⏳ Processing Time: "
+                            f"{bank['Processing Time']} days"
+                        )
+
+                        st.write("💬 User Reviews:")
+
+                        for review in bank["Reviews"]:
                             st.write(f"📝 {review}")
 
             else:
-                st.warning("No banks found matching the criteria.")
+                st.warning(
+                    "No banks found matching the criteria."
+                )
+        st.subheader("💡 Suggestions")
+        if cibil < 600:
+            st.write(
+                "✔ Improve your CIBIL score by paying bills on time."
+            )
+
+        if income < 15000:
+            st.write(
+                "✔ Consider applying with a co-applicant."
+            )
+
+        if loan_amount > income * 15:
+            st.write(
+                "✔ Reduce the loan amount or increase the tenure."
+            )
             
         st.divider()
         st.title("📊 EMI Calculator")

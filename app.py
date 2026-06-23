@@ -92,7 +92,16 @@ def verify_token():
 
 # OCR Function
 def extract_text(image):
-    return pytesseract.image_to_string(image)
+    gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+
+    gray = cv2.threshold(
+        gray,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )[1]
+
+    return pytesseract.image_to_string(gray)
 
 # Process text to extract financial transactions
 def process_financial_text(text):
